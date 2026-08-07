@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapping Active Sidewalk Sheds in NYC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#111; --paper:#fff; --line:#000; --muted:#666; --faint:#e5e5e5;
+    --base-fill:#f2f2f2; --base-stroke:#111;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  header{border-bottom:1px solid var(--line); padding:28px 32px 20px}
+  h1{
+    font-family:'Archivo Black',"Helvetica Neue",Helvetica,Arial,sans-serif;
+    font-weight:400;                 /* Archivo Black is already heavy — 400 is its normal weight */
+    font-size:30px; margin:0 0 8px; letter-spacing:-.01em; line-height:1.05;
+    color:var(--ink);                /* black, as in the reference */
+  }
+  .sub{font-size:13px; color:var(--muted); margin:0}
+  .meta{font-size:11px; color:var(--muted); margin-top:10px; letter-spacing:.06em; text-transform:uppercase}
+
+  nav{display:flex; gap:0; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  nav button{
+    background:none; border:0; border-right:1px solid var(--faint);
+    padding:13px 22px; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+    cursor:pointer; color:var(--muted); font-family:inherit;
+  }
+  nav button:hover{background:#fafafa; color:var(--ink)}
+  nav button.on{background:var(--ink); color:#fff}
+
+  .subnav{display:flex; border-bottom:1px solid var(--faint); background:#fafafa}
+  .subnav button{
+    background:none; border:0; padding:10px 20px; font-size:11px;
+    letter-spacing:.06em; text-transform:uppercase; cursor:pointer;
+    color:var(--muted); font-family:inherit; border-right:1px solid var(--faint);
+  }
+  .subnav button.on{color:var(--ink); font-weight:600; box-shadow:inset 0 -2px 0 var(--ink)}
+
+  .wrap{display:flex; gap:0; align-items:stretch; min-height:70vh}
+  .stage{flex:1 1 auto; padding:18px 24px; min-width:0}
+  aside{
+    flex:0 0 290px; border-left:1px solid var(--faint); padding:22px 22px 30px;
+    font-size:12px; background:#fcfcfc;
+  }
+  @media(max-width:900px){ .wrap{flex-direction:column} aside{flex:auto; border-left:0; border-top:1px solid var(--faint)} }
+
+  svg{width:100%; height:auto; display:block}
+  .cap{font-size:12px; color:var(--muted); margin:0 0 12px; line-height:1.5}
+  .cap b{color:var(--ink); font-weight:600}
+
+  aside h3{font-size:11px; letter-spacing:.09em; text-transform:uppercase; margin:0 0 10px; color:var(--muted)}
+  aside h3:not(:first-child){margin-top:26px}
+  #legendbox{margin-bottom:26px}
+  #panel h3{margin-top:0}
+  .rank{list-style:none; margin:0; padding:0}
+  .rank li{display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid #eee; line-height:1.35}
+  .rank .nm{flex:1; font-size:11px}
+  .rank .vl{font-variant-numeric:tabular-nums; font-weight:600; font-size:11px; white-space:nowrap}
+  .rank li span.i{color:#bbb; font-size:10px; margin-right:6px}
+
+  .legend{margin-top:6px}
+  .bar{height:11px; border:1px solid #ddd; margin-bottom:5px}
+  .ticks{display:flex; justify-content:space-between; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums}
+
+  .stat{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; font-size:11px}
+  .stat b{font-variant-numeric:tabular-nums}
+
+  #tip{
+    position:fixed; pointer-events:none; background:var(--ink); color:#fff;
+    padding:8px 11px; font-size:11px; line-height:1.5; border-radius:2px;
+    opacity:0; transition:opacity .1s; max-width:250px; z-index:99;
+  }
+  #tip b{display:block; margin-bottom:4px; font-size:11px}
+  .dist{stroke:var(--base-stroke); stroke-width:.4; cursor:pointer}
+  .dist:hover{stroke-width:1.6}
+  footer{border-top:1px solid var(--line); padding:18px 32px; font-size:11px; color:var(--muted)}
+  .note{font-size:10.5px; color:#999; line-height:1.5; margin-top:20px; border-top:1px solid #eee; padding-top:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mapping Active Sidewalk Sheds in NYC</h1>
+  <p class="sub">Scaffolding patterns across the city, by community district</p>
+  <p class="meta" id="hdrmeta"></p>
+</header>
+
+<nav id="tabs">
+  <button data-t="0" class="on">01 &nbsp;All Sheds</button>
+  <button data-t="1">02 &nbsp;By District</button>
+  <button data-t="2">03 &nbsp;Sidewalk Coverage</button>
+  <button data-t="3">04 &nbsp;Estimated Cost</button>
+</nav>
+<div class="subnav" id="subnav"></div>
+
+<div class="wrap">
+  <div class="stage">
+    <p class="cap" id="cap"></p>
+    <div id="canvas"></div>
+  </div>
+  <aside>
+    <div id="legendbox"></div>
+    <div id="panel"></div>
+    <p class="note" id="note"></p>
+  </aside>
+</div>
+
+<footer>
+  Computational Design Workflows — Aqila Bakri, Columbia GSAPP &nbsp;·&nbsp;
+  Data: NYC DOB Active Sidewalk Sheds, NYC Planning Community Districts, MapPLUTO
+</footer>
+
+<div id="tip"></div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  const D = DATA, G = D.geo, S = D.districts;
+  const byCd = {}; S.forEach(d => byCd[d.cd] = d);
+
+  // ---------- projection ----------
+  const LAT0 = 40.7128, K = Math.cos(LAT0*Math.PI/180);
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  G.forEach(f => f.rings.forEach(r => r.forEach(p => {
+    const x = p[0]*K, y = -p[1];
+    if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+  })));
+  const W = 900, PAD = 14;
+  const sc = (W-2*PAD)/(x1-x0), H = (y1-y0)*sc + 2*PAD;
+  const px = lon => (lon*K - x0)*sc + PAD;
+  const py = lat => (-lat - y0)*sc + PAD;
+
+  const paths = {};
+  G.forEach(f => {
+    paths[f.cd] = f.rings.map(r =>
+      "M" + r.map(p => px(p[0]).toFixed(1)+","+py(p[1]).toFixed(1)).join("L") + "Z"
+    ).join("");
+  });
+
+  // ---------- color ramps ----------
+  const RAMPS = {
+    reds:   ["#fff5f0","#fee0d2","#fcbba1","#fc9272","#fb6a4a","#ef3b2c","#cb181d","#a50f15","#67000d"],
+    pinks:  ["#fff7f3","#fde0dd","#fcc5c0","#fa9fb5","#f768a1","#dd3497","#ae017e","#7a0177","#49006d"],
+    oranges:["#fff5eb","#fee6ce","#fdd0a2","#fdae6b","#fd8d3c","#f16913","#d94801","#a63603","#7f2704"],
+    greens: ["#f7fcf5","#e5f5e0","#c7e9c0","#a1d99b","#74c476","#41ab5d","#238b45","#006d2c","#00441b"]
+  };
+  function ramp(name, t){
+    const c = RAMPS[name];
+    if(t==null||isNaN(t)) return "#e8e8e8";
+    t = Math.max(0, Math.min(1, t));
+    const i = Math.min(c.length-2, Math.floor(t*(c.length-1)));
+    const f = t*(c.length-1) - i;
+    const a = hex(c[i]), b = hex(c[i+1]);
+    return "rgb("+Math.round(a[0]+(b[0]-a[0])*f)+","+Math.round(a[1]+(b[1]-a[1])*f)+","+Math.round(a[2]+(b[2]-a[2])*f)+")";
+  }
+  function hex(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+
+  // ---------- formatting ----------
+  const nf = n => n.toLocaleString("en-US");
+  const money = n => n>=1e9 ? "$"+(n/1e9).toFixed(2)+"B" : n>=1e6 ? "$"+(n/1e6).toFixed(1)+"M" : "$"+Math.round(n/1e3)+"K";
+  const dollars = n => "$"+Math.round(n).toLocaleString("en-US");
+  const shortName = s => s.split(",")[0];
+
+  // ---------- views ----------
+  const VIEWS = {
+    points: {
+      cap: "Every active sidewalk shed permit in the city, plotted at its recorded location. <b>"+nf(D.points.length)+" sheds</b> — hover any dot for its address, length, and how long it has stood.",
+      note: "Each dot is one shed permit. Overlapping permits at the same address appear as a single darker cluster."
+    },
+    count:  { key:"count", ramp:"reds", label:"Number of sheds",
+      cap:"Total count of active sidewalk sheds in each community district. Darker red indicates more sheds.",
+      fmt:nf, note:"Raw counts favor large, dense districts — see Coverage for a size-normalized view." },
+    avgdur: { key:"avg_days", ramp:"pinks", label:"Average permit duration (days)",
+      cap:"Average number of days a shed permit stays active in each district. Darker pink indicates longer-standing sheds.",
+      fmt:d=>nf(d)+" days", note:"Averages are pulled upward by a small number of multi-year sheds — the box plot shows that spread." },
+    box:    { boxplot:true,
+      cap:"Distribution of permit duration for the ten districts with the <b>highest average shed age</b>. Boxes show the middle 50% of permits; the dark line is the median, the diamond the average.",
+      note:"Whiskers extend to the furthest permit within 1.5 × IQR; open circles beyond them are individual outlier permits. Those outliers are what pull each district's average above its median." },
+    pct:    { key:"pct", ramp:"oranges", label:"% of sidewalk covered",
+      cap:"Shed length as a share of total tax-lot street frontage in each district — a size-normalized measure of how shedded a district actually is.",
+      fmt:d=>d.toFixed(1)+"%", note:"Denominator is summed MapPLUTO LotFront, an assessed value. Corner lots record only one frontage, so true coverage is somewhat lower." },
+    ctotal: { key:"cost_total", ramp:"greens", label:"Estimated total cost",
+      cap:"Speculative total cost of all sheds in each district, at $150/linear foot to install (covering the first three months) plus 6% of install cost per month thereafter.",
+      fmt:money, note:"Estimated at 2026 rates applied to all permits. Indicative magnitude, not measured spending." },
+    cavg:   { key:"cost_avg", ramp:"greens", label:"Estimated cost per shed",
+      cap:"Speculative average cost of a single shed in each district. High values indicate long or long-standing sheds rather than many of them.",
+      fmt:dollars, note:"Estimated at 2026 rates applied to all permits. Indicative magnitude, not measured spending." }
+  };
+
+  const TABS = [
+    { subs:[["All sheds","points"]] },
+    { subs:[["Number of sheds","count"],["Average duration","avgdur"],["Top 10 — duration spread","box"]] },
+    { subs:[["% of sidewalk covered","pct"]] },
+    { subs:[["Total cost","ctotal"],["Average per shed","cavg"]] }
+  ];
+
+  let tab = 0, sub = 0;
+  const tip = document.getElementById("tip");
+
+  function showTip(e, html){
+    tip.innerHTML = html;
+    tip.style.opacity = 1;
+    const r = tip.getBoundingClientRect();
+    let x = e.clientX + 14, y = e.clientY + 14;
+    if(x + r.width > innerWidth - 10) x = e.clientX - r.width - 14;
+    if(y + r.height > innerHeight - 10) y = e.clientY - r.height - 14;
+    tip.style.left = x+"px"; tip.style.top = y+"px";
+  }
+  const hideTip = () => tip.style.opacity = 0;
+
+  function drawBase(extra){
+    return '<svg viewBox="0 0 '+W+' '+H.toFixed(0)+'" role="img">'+extra+'</svg>';
+  }
+
+  function renderPoints(){
+    let s = "";
+    G.forEach(f => { s += '<path d="'+paths[f.cd]+'" fill="#f4f4f4" stroke="#111" stroke-width=".45"/>'; });
+    s += '<g fill="#c8102e" fill-opacity=".5">';
+    const scr = D.points.map(p => [px(p[0]), py(p[1])]);
+    scr.forEach(c => { s += '<circle cx="'+c[0].toFixed(1)+'" cy="'+c[1].toFixed(1)+'" r="1.5"/>'; });
+    s += '</g><circle id="hl" r="4.5" fill="none" stroke="#111" stroke-width="1.5" opacity="0"/>';
+    document.getElementById("canvas").innerHTML = drawBase(s);
+
+    // spatial hash so hover finds the nearest shed without testing all 7,500
+    const CELL = 12, grid = {};
+    scr.forEach((c,i) => {
+      const k = Math.floor(c[0]/CELL)+":"+Math.floor(c[1]/CELL);
+      (grid[k] || (grid[k] = [])).push(i);
+    });
+
+    const svg = document.querySelector("#canvas svg");
+    const hl = document.getElementById("hl");
+    svg.addEventListener("mousemove", e => {
+      const r = svg.getBoundingClientRect();
+      const mx = (e.clientX - r.left) / r.width * W;
+      const my = (e.clientY - r.top) / r.height * H;
+      const gx = Math.floor(mx/CELL), gy = Math.floor(my/CELL);
+      let best = -1, bd = 64;
+      for(let dx=-1; dx<=1; dx++) for(let dy=-1; dy<=1; dy++){
+        const cell = grid[(gx+dx)+":"+(gy+dy)];
+        if(!cell) continue;
+        for(const i of cell){
+          const d = (scr[i][0]-mx)**2 + (scr[i][1]-my)**2;
+          if(d < bd){ bd = d; best = i; }
+        }
+      }
+      if(best < 0){ hl.setAttribute("opacity",0); hideTip(); return; }
+      const p = D.points[best], d = byCd[p[2]];
+      hl.setAttribute("cx", scr[best][0]); hl.setAttribute("cy", scr[best][1]);
+      hl.setAttribute("opacity", 1);
+      showTip(e,
+        "<b>"+(p[6] || "Address not recorded")+"</b>"+
+        "CD "+p[2]+" — "+shortName(d.name)+"<br>"+
+        "Length: "+nf(p[3])+" ft<br>"+
+        "Duration: "+nf(p[4])+" days ("+(p[4]/365.25).toFixed(1)+" yrs)<br>"+
+        "Permit since: "+p[7]+"<br>"+
+        "Est. cost: "+dollars(p[5]));
+    });
+    svg.addEventListener("mouseleave", () => { hl.setAttribute("opacity",0); hideTip(); });
+
+    const top = S.slice().sort((a,b)=>b.count-a.count).slice(0,10);
+    document.getElementById("legendbox").innerHTML =
+      '<h3>Citywide</h3>'+
+      stat("Total sheds", nf(D.points.length))+
+      stat("Community districts", S.length)+
+      stat("Total shed length", nf(S.reduce((a,d)=>a+d.feet,0))+" ft")+
+      stat("Est. total cost", money(D.meta.total_cost));
+    document.getElementById("panel").innerHTML =
+      '<h3>Most sheds</h3>'+rankList(top, d=>nf(d.count));
+  }
+
+  function renderChoropleth(v){
+    const vals = S.map(d=>d[v.key]).filter(x=>x!=null);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    let s = "";
+    S.forEach(d => {
+      if(!paths[d.cd]) return;
+      const t = (d[v.key]-lo)/(hi-lo||1);
+      s += '<path class="dist" d="'+paths[d.cd]+'" fill="'+ramp(v.ramp,t)+'" data-cd="'+d.cd+'"/>';
+    });
+    document.getElementById("canvas").innerHTML = drawBase(s);
+
+    document.querySelectorAll(".dist").forEach(el=>{
+      el.addEventListener("mousemove", e=>{
+        const d = byCd[el.dataset.cd];
+        showTip(e, "<b>CD "+d.cd+" — "+shortName(d.name)+"</b>"+
+          v.label+": "+v.fmt(d[v.key])+"<br>"+
+          nf(d.count)+" sheds · "+nf(d.feet)+" ft<br>"+
+          "median "+nf(d.med_days)+" days");
+      });
+      el.addEventListener("mouseleave", hideTip);
+    });
+
+    // legend
+    let grad = "";
+    for(let i=0;i<=10;i++) grad += ramp(v.ramp,i/10)+(i<10?",":"");
+    document.getElementById("legendbox").innerHTML =
+      '<h3>'+v.label+'</h3>'+
+      '<div class="legend"><div class="bar" style="background:linear-gradient(90deg,'+grad+')"></div>'+
+      '<div class="ticks"><span>'+v.fmt(lo)+'</span><span>'+v.fmt(hi)+'</span></div></div>';
+
+    const top = S.filter(d=>d[v.key]!=null).sort((a,b)=>b[v.key]-a[v.key]).slice(0,10);
+    document.getElementById("panel").innerHTML =
+      '<h3>Top 10 districts</h3>'+rankList(top, d=>v.fmt(d[v.key]));
+  }
+
+  function renderBox(){
+    const top = S.slice().sort((a,b)=>b.avg_days-a.avg_days).slice(0,10);
+    const BW = 900, ROW = 46, LEFT = 250, RIGHT = 40;
+    const BH = top.length*ROW + 56;
+    const maxD = Math.max(...top.map(d=>d.max_days));
+    const sx = v => LEFT + (v/maxD)*(BW-LEFT-RIGHT);
+    const wLo = d => d.whisk_lo != null ? d.whisk_lo : d.min_days;
+    const wHi = d => d.whisk_hi != null ? d.whisk_hi : d.max_days;
+
+    let s = '<svg viewBox="0 0 '+BW+' '+BH+'" role="img">';
+    // axis
+    for(let g=0; g<=maxD; g+=1000){
+      s += '<line x1="'+sx(g)+'" y1="24" x2="'+sx(g)+'" y2="'+(BH-30)+'" stroke="#eee"/>'+
+           '<text x="'+sx(g)+'" y="16" font-size="10" fill="#999" text-anchor="middle">'+nf(g)+'</text>';
+    }
+    top.forEach((d,i)=>{
+      const y = 34 + i*ROW + ROW/2;
+      const h = 15;
+      s += '<text x="'+(LEFT-12)+'" y="'+(y+4)+'" font-size="11" fill="#111" text-anchor="end">'+shortName(d.name)+'</text>';
+      // whiskers reach the last point within 1.5x IQR, not the extremes
+      const lo = wLo(d), hi = wHi(d);
+      s += '<line x1="'+sx(lo)+'" y1="'+y+'" x2="'+sx(d.q1)+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
+      s += '<line x1="'+sx(d.q3)+'" y1="'+y+'" x2="'+sx(hi)+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
+      s += '<line x1="'+sx(lo)+'" y1="'+(y-6)+'" x2="'+sx(lo)+'" y2="'+(y+6)+'" stroke="#111"/>';
+      s += '<line x1="'+sx(hi)+'" y1="'+(y-6)+'" x2="'+sx(hi)+'" y2="'+(y+6)+'" stroke="#111"/>';
+      // outliers: individual permits beyond the fences
+      (d.outliers || []).forEach(v => {
+        s += '<circle cx="'+sx(v).toFixed(1)+'" cy="'+y+'" r="2.6" fill="none" stroke="#111" stroke-width=".9" opacity=".75"/>';
+      });
+      // box
+      s += '<rect x="'+sx(d.q1)+'" y="'+(y-h/2)+'" width="'+Math.max(1,sx(d.q3)-sx(d.q1))+'" height="'+h+'" fill="'+ramp("pinks",.45)+'" stroke="#111" stroke-width=".8"/>';
+      // median
+      s += '<line x1="'+sx(d.med_days)+'" y1="'+(y-h/2)+'" x2="'+sx(d.med_days)+'" y2="'+(y+h/2)+'" stroke="#a50f15" stroke-width="2"/>';
+      // mean marker (diamond, so it can't be confused with the outlier circles)
+      const mx = sx(d.avg_days);
+      s += '<polygon points="'+mx+','+(y-4)+' '+(mx+4)+','+y+' '+mx+','+(y+4)+' '+(mx-4)+','+y+'" fill="#c8102e" stroke="#fff" stroke-width=".7"/>';
+    });
+    s += '<text x="'+((LEFT+BW-RIGHT)/2)+'" y="'+(BH-8)+'" font-size="11" fill="#666" text-anchor="middle">Permit duration (days)</text>';
+    s += '</svg>';
+    document.getElementById("canvas").innerHTML = s;
+
+    document.getElementById("legendbox").innerHTML =
+      '<h3>Reading the plot</h3>'+
+      '<div class="stat"><span>Box</span><b>middle 50% (IQR)</b></div>'+
+      '<div class="stat"><span>Dark red line</span><b>median</b></div>'+
+      '<div class="stat"><span>Red diamond</span><b>mean</b></div>'+
+      '<div class="stat"><span>Whiskers</span><b>within 1.5 × IQR</b></div>'+
+      '<div class="stat"><span>Open circles</span><b>outliers</b></div>';
+    document.getElementById("panel").innerHTML =
+      '<h3>Average duration</h3>'+rankList(top, d=>nf(d.avg_days)+"d");
+  }
+
+  function rankList(arr, fmt){
+    return '<ul class="rank">'+arr.map((d,i)=>
+      '<li><span class="nm"><span class="i">'+String(i+1).padStart(2,"0")+'</span>'+shortName(d.name)+'</span>'+
+      '<span class="vl">'+fmt(d)+'</span></li>').join("")+'</ul>';
+  }
+  function stat(k,v){ return '<div class="stat"><span>'+k+'</span><b>'+v+'</b></div>'; }
+
+  function render(){
+    const t = TABS[tab];
+    const sn = document.getElementById("subnav");
+    sn.style.display = t.subs.length>1 ? "flex" : "none";
+    sn.innerHTML = t.subs.map((s,i)=>'<button data-s="'+i+'" class="'+(i===sub?"on":"")+'">'+s[0]+'</button>').join("");
+    sn.querySelectorAll("button").forEach(b=>b.onclick=()=>{ sub=+b.dataset.s; render(); });
+
+    const v = VIEWS[t.subs[sub][1]];
+    document.getElementById("cap").innerHTML = v.cap;
+    document.getElementById("note").textContent = v.note;
+
+    if(v.boxplot) renderBox();
+    else if(t.subs[sub][1]==="points") renderPoints();
+    else renderChoropleth(v);
+  }
+
+  document.querySelectorAll("#tabs button").forEach(b=>{
+    b.onclick = () => {
+      document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on");
+      tab = +b.dataset.t; sub = 0; render();
+    };
+  });
+
+  document.getElementById("hdrmeta").textContent =
+    nf(D.points.length)+" sheds · "+S.length+" community districts · est. "+money(D.meta.total_cost)+" total";
+
+  render();
+})();
+</script>
+</body>
+</html>
