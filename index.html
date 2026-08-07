@@ -115,7 +115,7 @@
 </div>
 
 <footer>
-  Computational Design Workflows — Aqila Bakri, Columbia GSAPP &nbsp;·&nbsp;
+  Mapping Systems — Aqila Bakri, Columbia GSAPP &nbsp;·&nbsp;
   Data: NYC DOB Active Sidewalk Sheds, NYC Planning Community Districts, MapPLUTO
 </footer>
 
@@ -182,7 +182,9 @@
     avgdur: { key:"avg_days", ramp:"pinks", label:"Average permit duration (days)",
       cap:"Average number of days a shed permit stays active in each district. Darker pink indicates longer-standing sheds.",
       fmt:d=>nf(d)+" days", note:"Averages are pulled upward by a small number of multi-year sheds — the box plot shows that spread." },
-    box:    { boxplot:true,
+    box:    { boxplot:true, ramp:"pinks", medColor:"#a50f15", tick:1000,
+      fields:{q1:"q1",med:"med_days",q3:"q3",wlo:"whisk_lo",whi:"whisk_hi",out:"outliers",max:"max_days",mean:"avg_days"},
+      fmt:d=>nf(d)+"d", axis:"Permit duration (days)", axisFmt:nf, rankLabel:"Average duration",
       cap:"Distribution of permit duration for the ten districts with the <b>highest average shed age</b>. Boxes show the middle 50% of permits; the dark line is the median, the diamond the average.",
       note:"Whiskers extend to the furthest permit within 1.5 × IQR; open circles beyond them are individual outlier permits. Those outliers are what pull each district's average above its median." },
     pct:    { key:"pct", ramp:"oranges", label:"% of sidewalk covered",
@@ -191,6 +193,11 @@
     ctotal: { key:"cost_total", ramp:"greens", label:"Estimated total cost",
       cap:"Speculative total cost of all sheds in each district, at $150/linear foot to install (covering the first three months) plus 6% of install cost per month thereafter.",
       fmt:money, note:"Estimated at 2026 rates applied to all permits. Indicative magnitude, not measured spending." },
+    costbox:{ boxplot:true, ramp:"greens", medColor:"#00441b", tick:250000,
+      fields:{q1:"cost_q1",med:"cost_med",q3:"cost_q3",wlo:"cost_wlo",whi:"cost_whi",out:"cost_out",max:"cost_max",mean:"cost_avg"},
+      fmt:dollars, axis:"Estimated cost per shed (USD)", axisFmt:n=>"$"+(n/1000)+"K", rankLabel:"Average per shed",
+      cap:"Spread of estimated cost per individual shed, for the ten districts with the <b>highest average cost</b>. Boxes show the middle 50%; the dark line is the median, the diamond the average.",
+      note:"Cost is driven by length x duration, so the outliers here are the same long-running sheds that stretch the duration plot." },
     cavg:   { key:"cost_avg", ramp:"greens", label:"Estimated cost per shed",
       cap:"Speculative average cost of a single shed in each district. High values indicate long or long-standing sheds rather than many of them.",
       fmt:dollars, note:"Estimated at 2026 rates applied to all permits. Indicative magnitude, not measured spending." }
@@ -200,7 +207,7 @@
     { subs:[["All sheds","points"]] },
     { subs:[["Number of sheds","count"],["Average duration","avgdur"],["Top 10 — duration spread","box"]] },
     { subs:[["% of sidewalk covered","pct"]] },
-    { subs:[["Total cost","ctotal"],["Average per shed","cavg"]] }
+    { subs:[["Total cost","ctotal"],["Average per shed","cavg"],["Top 10 — cost spread","costbox"]] }
   ];
 
   let tab = 0, sub = 0;
@@ -313,20 +320,22 @@
       '<h3>Top 10 districts</h3>'+rankList(top, d=>v.fmt(d[v.key]));
   }
 
-  function renderBox(){
-    const top = S.slice().sort((a,b)=>b.avg_days-a.avg_days).slice(0,10);
+  function renderBox(v){
+    const F = v.fields;
+    const top = S.slice().sort((a,b)=>b[F.mean]-a[F.mean]).slice(0,10);
     const BW = 900, ROW = 46, LEFT = 250, RIGHT = 40;
     const BH = top.length*ROW + 56;
-    const maxD = Math.max(...top.map(d=>d.max_days));
-    const sx = v => LEFT + (v/maxD)*(BW-LEFT-RIGHT);
-    const wLo = d => d.whisk_lo != null ? d.whisk_lo : d.min_days;
-    const wHi = d => d.whisk_hi != null ? d.whisk_hi : d.max_days;
+    const maxD = Math.max(...top.map(d=>d[F.max]));
+    const sx = q => LEFT + (q/maxD)*(BW-LEFT-RIGHT);
+    const wLo = d => d[F.wlo] != null ? d[F.wlo] : d[F.q1];
+    const wHi = d => d[F.whi] != null ? d[F.whi] : d[F.q3];
+    const tick = v.tick;
 
     let s = '<svg viewBox="0 0 '+BW+' '+BH+'" role="img">';
     // axis
-    for(let g=0; g<=maxD; g+=1000){
+    for(let g=0; g<=maxD; g+=tick){
       s += '<line x1="'+sx(g)+'" y1="24" x2="'+sx(g)+'" y2="'+(BH-30)+'" stroke="#eee"/>'+
-           '<text x="'+sx(g)+'" y="16" font-size="10" fill="#999" text-anchor="middle">'+nf(g)+'</text>';
+           '<text x="'+sx(g)+'" y="16" font-size="10" fill="#999" text-anchor="middle">'+v.axisFmt(g)+'</text>';
     }
     top.forEach((d,i)=>{
       const y = 34 + i*ROW + ROW/2;
@@ -334,23 +343,23 @@
       s += '<text x="'+(LEFT-12)+'" y="'+(y+4)+'" font-size="11" fill="#111" text-anchor="end">'+shortName(d.name)+'</text>';
       // whiskers reach the last point within 1.5x IQR, not the extremes
       const lo = wLo(d), hi = wHi(d);
-      s += '<line x1="'+sx(lo)+'" y1="'+y+'" x2="'+sx(d.q1)+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
-      s += '<line x1="'+sx(d.q3)+'" y1="'+y+'" x2="'+sx(hi)+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
+      s += '<line x1="'+sx(lo)+'" y1="'+y+'" x2="'+sx(d[F.q1])+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
+      s += '<line x1="'+sx(d[F.q3])+'" y1="'+y+'" x2="'+sx(hi)+'" y2="'+y+'" stroke="#111" stroke-width="1"/>';
       s += '<line x1="'+sx(lo)+'" y1="'+(y-6)+'" x2="'+sx(lo)+'" y2="'+(y+6)+'" stroke="#111"/>';
       s += '<line x1="'+sx(hi)+'" y1="'+(y-6)+'" x2="'+sx(hi)+'" y2="'+(y+6)+'" stroke="#111"/>';
       // outliers: individual permits beyond the fences
-      (d.outliers || []).forEach(v => {
-        s += '<circle cx="'+sx(v).toFixed(1)+'" cy="'+y+'" r="2.6" fill="none" stroke="#111" stroke-width=".9" opacity=".75"/>';
+      (d[F.out] || []).forEach(o => {
+        s += '<circle cx="'+sx(o).toFixed(1)+'" cy="'+y+'" r="2.6" fill="none" stroke="#111" stroke-width=".9" opacity=".75"/>';
       });
       // box
-      s += '<rect x="'+sx(d.q1)+'" y="'+(y-h/2)+'" width="'+Math.max(1,sx(d.q3)-sx(d.q1))+'" height="'+h+'" fill="'+ramp("pinks",.45)+'" stroke="#111" stroke-width=".8"/>';
+      s += '<rect x="'+sx(d[F.q1])+'" y="'+(y-h/2)+'" width="'+Math.max(1,sx(d[F.q3])-sx(d[F.q1]))+'" height="'+h+'" fill="'+ramp(v.ramp,.45)+'" stroke="#111" stroke-width=".8"/>';
       // median
-      s += '<line x1="'+sx(d.med_days)+'" y1="'+(y-h/2)+'" x2="'+sx(d.med_days)+'" y2="'+(y+h/2)+'" stroke="#a50f15" stroke-width="2"/>';
+      s += '<line x1="'+sx(d[F.med])+'" y1="'+(y-h/2)+'" x2="'+sx(d[F.med])+'" y2="'+(y+h/2)+'" stroke="'+v.medColor+'" stroke-width="2"/>';
       // mean marker (diamond, so it can't be confused with the outlier circles)
-      const mx = sx(d.avg_days);
+      const mx = sx(d[F.mean]);
       s += '<polygon points="'+mx+','+(y-4)+' '+(mx+4)+','+y+' '+mx+','+(y+4)+' '+(mx-4)+','+y+'" fill="#c8102e" stroke="#fff" stroke-width=".7"/>';
     });
-    s += '<text x="'+((LEFT+BW-RIGHT)/2)+'" y="'+(BH-8)+'" font-size="11" fill="#666" text-anchor="middle">Permit duration (days)</text>';
+    s += '<text x="'+((LEFT+BW-RIGHT)/2)+'" y="'+(BH-8)+'" font-size="11" fill="#666" text-anchor="middle">'+v.axis+'</text>';
     s += '</svg>';
     document.getElementById("canvas").innerHTML = s;
 
@@ -362,7 +371,7 @@
       '<div class="stat"><span>Whiskers</span><b>within 1.5 × IQR</b></div>'+
       '<div class="stat"><span>Open circles</span><b>outliers</b></div>';
     document.getElementById("panel").innerHTML =
-      '<h3>Average duration</h3>'+rankList(top, d=>nf(d.avg_days)+"d");
+      '<h3>'+v.rankLabel+'</h3>'+rankList(top, d=>v.fmt(d[F.mean]));
   }
 
   function rankList(arr, fmt){
@@ -383,7 +392,7 @@
     document.getElementById("cap").innerHTML = v.cap;
     document.getElementById("note").textContent = v.note;
 
-    if(v.boxplot) renderBox();
+    if(v.boxplot) renderBox(v);
     else if(t.subs[sub][1]==="points") renderPoints();
     else renderChoropleth(v);
   }

@@ -146,6 +146,16 @@ for cd, g in sheds_data.groupby("Community Board"):
     whisk_hi = float(inside.max()) if len(inside) else q3
     outliers = sorted({int(v) for v in days[(days < lo_fence) | (days > hi_fence)]})
 
+    # same five-number summary for per-shed cost
+    costs = np.sort(g["Cost"].to_numpy().astype(float))
+    cq1, cmed, cq3 = (float(v) for v in np.percentile(costs, [25, 50, 75]))
+    ciqr = cq3 - cq1
+    c_lo_fence, c_hi_fence = cq1 - 1.5 * ciqr, cq3 + 1.5 * ciqr
+    c_inside = costs[(costs >= c_lo_fence) & (costs <= c_hi_fence)]
+    c_whisk_lo = float(c_inside.min()) if len(c_inside) else cq1
+    c_whisk_hi = float(c_inside.max()) if len(c_inside) else cq3
+    c_outliers = sorted({int(round(v)) for v in costs[(costs < c_lo_fence) | (costs > c_hi_fence)]})
+
     districts_out.append({
         "cd": cd,
         "name": board_names[cd],
@@ -164,6 +174,13 @@ for cd, g in sheds_data.groupby("Community Board"):
         "max_days": int(days[-1]),
         "cost_total": round(float(g["Cost"].sum())),
         "cost_avg": round(float(g["Cost"].mean())),
+        "cost_q1": round(cq1),
+        "cost_med": round(cmed),
+        "cost_q3": round(cq3),
+        "cost_wlo": round(c_whisk_lo),
+        "cost_whi": round(c_whisk_hi),
+        "cost_out": c_outliers,
+        "cost_max": int(round(costs[-1])),
     })
 districts_out.sort(key=lambda d: d["cd"])
 
