@@ -84,9 +84,25 @@
   .dist:hover{stroke-width:1.6}
   footer{border-top:1px solid var(--line); padding:18px 32px; font-size:11px; color:var(--muted)}
   .note{font-size:10.5px; color:#999; line-height:1.5; margin-top:20px; border-top:1px solid #eee; padding-top:12px}
+  /* ?embed: fit the whole site in the window, no page scroll (used by the portfolio) */
+  body.embed{height:100vh; display:flex; flex-direction:column; overflow:hidden}
+  body.embed header{padding:14px 24px 10px}
+  body.embed h1{font-size:22px; margin-bottom:4px}
+  body.embed .sub{display:none}
+  body.embed nav button{padding:9px 18px}
+  body.embed footer{display:none}
+  body.embed .wrap{flex:1 1 auto; min-height:0}
+  body.embed .stage{display:flex; flex-direction:column; min-height:0; padding:10px 20px}
+  body.embed #canvas{flex:1 1 auto; min-height:0}
+  body.embed #canvas svg{width:100%; height:100%}
+  body.embed aside{overflow-y:auto; padding:14px 18px}
 </style>
 </head>
 <body>
+<script>
+  // Fit-to-window mode when shown inside another page (e.g. the portfolio) or with ?embed.
+  if (/[?&]embed/.test(location.search) || window.self !== window.top) document.body.classList.add("embed");
+</script>
 
 <header>
   <h1>Mapping Active Sidewalk Sheds in NYC</h1>
@@ -247,9 +263,10 @@
     const svg = document.querySelector("#canvas svg");
     const hl = document.getElementById("hl");
     svg.addEventListener("mousemove", e => {
-      const r = svg.getBoundingClientRect();
-      const mx = (e.clientX - r.left) / r.width * W;
-      const my = (e.clientY - r.top) / r.height * H;
+      // screen -> drawing units (also correct when the map is letterboxed)
+      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const mx = loc.x, my = loc.y;
       const gx = Math.floor(mx/CELL), gy = Math.floor(my/CELL);
       let best = -1, bd = 64;
       for(let dx=-1; dx<=1; dx++) for(let dy=-1; dy<=1; dy++){
